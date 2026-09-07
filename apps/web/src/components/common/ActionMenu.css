@@ -1,0 +1,77 @@
+.action-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.action-menu summary {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.action-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.action-menu summary:hover,
+.action-menu summary:focus-visible {
+  color: var(--brand-blue);
+  background: var(--brand-blue-light);
+  border-color: var(--brand-blue-border);
+  outline: none;
+}
+
+.action-menu__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 168px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+}
+
+.action-menu__panel button {
+  width: 100%;
+  padding: 9px 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-menu__panel button:hover:not(:disabled),
+.action-menu__panel button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-surface-subtle);
+  outline: none;
+}
+
+.action-menu__panel button.action-menu__danger {
+  color: var(--accent-rose);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.action-menu__panel button.action-menu__danger:hover:not(:disabled) {
+  background: var(--accent-rose-light);
+}
+
+.action-menu__panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
