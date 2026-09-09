@@ -1,13 +1,19 @@
-name: Pull request CI
+name: CI
 
 on:
   pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  ci:
+    name: Build, Test & Validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -38,11 +44,11 @@ jobs:
       CORS_ORIGINS: http://localhost:3000
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -50,11 +56,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma client
+      - name: Generate Prisma Client
         run: npm run prisma:generate
 
       - name: Apply committed migrations
         run: npm run prisma:migrate
+
+      - name: Build shared package
+        run: npm run build --workspace @aiking/shared
 
       - name: Typecheck
         run: npm run typecheck
@@ -62,8 +71,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
-        run: npm test
+      - name: Run tests
+        run: npm run test --workspace @aiking/api -- --runInBand
 
-      - name: Build
+      - name: Build application
         run: npm run build
