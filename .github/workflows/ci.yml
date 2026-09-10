@@ -15,6 +15,7 @@ jobs:
   ci:
     name: Build, Test & Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -33,7 +34,14 @@ jobs:
 
     env:
       NODE_ENV: test
+      APP_ROLE: api
       DATABASE_URL: postgresql://aiking:aiking@localhost:5433/aiking?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      QUEUE_DRIVER: inline
+      PROVIDER_MODE: mock
+      PAYMENTS_MODE: mock
+      JWT_SECRET: ci-only-test-secret-not-valid-outside-ci
+      CORS_ORIGINS: http://localhost:3000
 
     steps:
       - name: Checkout repository
@@ -64,7 +72,7 @@ jobs:
         run: npm run lint
 
       - name: Run tests
-        run: npm test -- --runInBand
+        run: npm run test --workspace @aiking/api -- --runInBand
 
       - name: Build application
         run: npm run build
