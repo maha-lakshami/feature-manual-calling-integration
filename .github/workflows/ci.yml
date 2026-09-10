@@ -42,6 +42,11 @@ jobs:
       PAYMENTS_MODE: mock
       JWT_SECRET: ci-only-test-secret-not-valid-outside-ci
       CORS_ORIGINS: http://localhost:3000
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'ci-build-placeholder' }}
+      PLIVO_AUTH_ID: ${{ secrets.PLIVO_AUTH_ID || 'ci-build-placeholder' }}
+      PLIVO_AUTH_TOKEN: ${{ secrets.PLIVO_AUTH_TOKEN || 'ci-build-placeholder' }}
+      RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID || 'ci-build-placeholder' }}
+      RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET || 'ci-build-placeholder' }}
 
     steps:
       - name: Checkout repository
