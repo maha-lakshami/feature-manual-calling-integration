@@ -38,5 +38,10 @@
   },
   "devDependencies": {
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "2.3.0"
+    }
   }
 }
