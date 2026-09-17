@@ -457,6 +457,9 @@ export interface CallDto {
   contactId: string;
   contactName: string;
   direction: CallDirection;
+    /** 'ai' = automated voice agent, 'manual' = a real salesperson bridged in via phone. */
+  callType: 'ai' | 'manual';
+  bridgeNumber: string | null;
   status: CallStatus;
   outcome: CallOutcome | null;
   /** Plivo call UUID — also the metering idempotency key (spec §8.2). */
@@ -487,7 +490,7 @@ export interface PlaceCallRequest {
   /** Which reviewed agent script to run (spec §5.2). */
   scriptId?: string;
   objective?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>; /** 'ai' (default, automated voice agent) or 'manual' (click-to-call bridge to a real salesperson). */ callType?: 'ai' | 'manual'; 
 }
 
 // ── 360° timeline (spec §6.4) ────────────────────────────────────────────────

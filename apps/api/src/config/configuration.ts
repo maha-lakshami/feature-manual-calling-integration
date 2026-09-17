@@ -87,6 +87,7 @@ export interface AppConfig {
     authToken: string;
     fromNumber: string;
     callbackBaseUrl: string;
+    salespersonNumber: string;
   };
   deepgram: { apiKey: string; model: string };
   gemini: { apiKey: string; model: string; liveEnabled: boolean };
@@ -399,6 +400,7 @@ export function loadConfig(): AppConfig {
       // Plivo must be able to reach this to deliver call events, so it defaults to
       // the same public origin rather than to localhost independently.
       callbackBaseUrl: str('PLIVO_CALLBACK_BASE_URL', publicBaseUrl).replace(/\/$/, ''),
+      salespersonNumber: str('SALESPERSON_PHONE_NUMBER', ''),
     },
 
     deepgram: {

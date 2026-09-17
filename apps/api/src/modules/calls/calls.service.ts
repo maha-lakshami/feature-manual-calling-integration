@@ -193,9 +193,11 @@ export class CallsService {
    * Only then is the `Call` row written and the dial queued. Doing it in the other
    * order would leave `queued` calls that can never be placed.
    */
-  async place(request: PlaceCallRequest, createdBy: string): Promise<CallDto> {
+    async place(request: PlaceCallRequest, createdBy: string): Promise<CallDto> {
     const tenantId = this.tenantContext.requireTenantId('calls.place');
     const contact = await this.contacts.get(request.contactId);
+    const isManual = request.callType === 'manual';
+    let bridgeNumber: string | null = null;
 
     if (!contact.phone) {
       throw new ValidationFailedException(`Contact ${contact.fullName} has no phone number to call`, {
@@ -204,18 +206,12 @@ export class CallsService {
     }
 
     if (contact.optedOutAt) {
-      // §12 — the opt-out is global, so it covers voice even though the opt-in flags
-      // are per-channel. Refusing here rather than at dial time means the tenant gets
-      // an error they can act on instead of a call that silently never happens.
       throw new ValidationFailedException(`Contact ${contact.fullName} has opted out of all communication`, {
         contactId: contact.id,
         optedOutAt: contact.optedOutAt,
       });
     }
 
-    // §8.2 — balance checked before the paid action. `checkAffordable` applies the
-    // tenant's §5.3 low-balance policy: `hard_stop` refuses at zero, `soft_limit`
-    // allows the configured overdraft. Resolving that open item is a settings change.
     const estimatePaise = await this.metering.estimate(
       UsageEventType.AI_CALL_MINUTE,
       ESTIMATED_CALL_MINUTES,
@@ -223,21 +219,28 @@ export class CallsService {
     );
     await this.wallet.assertAffordable(estimatePaise, `place an AI call to ${contact.fullName}`, tenantId);
 
+    let dialToNumber = contact.phone;
+    if (isManual) {
+      if (!this.config.plivo.salespersonNumber) {
+        throw new ValidationFailedException('No salesperson phone number is configured for manual calls');
+      }
+      bridgeNumber = contact.phone;
+      dialToNumber = this.config.plivo.salespersonNumber;
+    }
+
     const call = await this.prisma.call.create({
       data: {
-        // From the JWT-derived scope, never the request body (§4.3).
         tenantId,
         contactId: contact.id,
         direction: CallDirection.OUTBOUND,
         status: CallStatus.QUEUED,
         fromNumber: this.config.plivo.fromNumber,
-        toNumber: contact.phone,
+        toNumber: dialToNumber,
+        bridgeNumber,
+        callType: isManual ? 'manual' : 'ai',
         provider: this.telephony.providerId,
         objective: request.objective ?? DEFAULT_OBJECTIVE,
         scriptId: request.scriptId ?? null,
-        // `promptVersion` stays null until a summary exists. It records which prompt
-        // produced the summary, which is a property of the summarization and not of
-        // the dial — writing it here would claim a provenance nothing has yet.
         createdBy,
         metadata: (request.metadata ?? {}) as Prisma.InputJsonValue,
       },
@@ -247,7 +250,6 @@ export class CallsService {
     await this.queue.enqueue(
       'call-place',
       { tenantId, actorUserId: createdBy, callId: call.id },
-      // Keyed on our row, so a double-clicked "Call" button dials once.
       { jobId: `call:${call.id}` },
     );
 
@@ -453,6 +455,23 @@ export class CallsService {
     const minutes = this.metering.billableMinutes(durationSeconds);
     const key = reservationKey(call.id);
 
+    let recordingUrl = input.recordingUrl;
+    if (!recordingUrl && durationSeconds > 0 && call.providerCallId) {
+      for (const delayMs of [8000, 12000, 15000]) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        try {
+          const recording = await this.telephony.fetchRecording(call.providerCallId);
+          if (recording?.url) {
+            recordingUrl = recording.url;
+            break;
+          }
+          this.logger.warn(`No recording available yet for call ${call.id}, will retry`);
+        } catch (error) {
+          this.logger.warn(`Could not fetch recording for call ${call.id}: ${(error as Error).message}`);
+        }
+      }
+    }
+
     let costPaise = 0n;
 
     if (minutes > 0) {
@@ -476,7 +495,7 @@ export class CallsService {
       });
     }
 
-    const endedAt = new Date();
+        const endedAt = new Date();
 
     await this.prisma.call.update({
       where: { id: call.id },
@@ -484,16 +503,24 @@ export class CallsService {
         // `summarizing` when a recording is promised: the outcome is not known until
         // the LLM has read the transcript, and claiming `completed` first would show a
         // finished call with no summary.
-        status: input.recordingUrl ? CallStatus.SUMMARIZING : CallStatus.COMPLETED,
+        status: recordingUrl ? CallStatus.SUMMARIZING : CallStatus.COMPLETED,
         durationSeconds,
         billedMinutes: minutes,
         costPaise,
         endedAt,
         startedAt: call.startedAt ?? new Date(endedAt.getTime() - durationSeconds * 1000),
         failureReason: null,
-        ...(input.recordingUrl ? {} : { outcome: call.outcome ?? CallOutcome.UNKNOWN }),
+        ...(recordingUrl ? {} : { outcome: call.outcome ?? CallOutcome.UNKNOWN }),
       },
     });
+
+    if (recordingUrl) {
+      await this.queue.enqueue(
+        'recording-ingest',
+        { tenantId: call.tenantId, callId: call.id, recordingUrl, durationSeconds },
+        { jobId: `recording:${call.id}` },
+      );
+    }
 
     await this.communications.recordSafely({
       tenantId: call.tenantId,
@@ -639,6 +666,8 @@ export function toCallDto(call: Call, contactName: string, turns: CallTranscript
     contactId: call.contactId,
     contactName,
     direction: call.direction as CallDirection,
+    callType: call.callType as 'ai' | 'manual',
+    bridgeNumber: call.bridgeNumber,
     status: call.status as CallStatus,
     outcome: (call.outcome as CallOutcome | null) ?? null,
     providerCallId: call.providerCallId,

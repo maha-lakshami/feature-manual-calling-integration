@@ -149,7 +149,7 @@ export const CallsPage: React.FC = () => {
               {calls.length > 0 ? (
                 calls.map((c) => {
                   const isCompleted = c.status === 'completed' || c.status === 'escalated';
-                  const phone = c.toNumber || c.toPhone || '—';
+                  const phone = c.bridgeNumber || c.toNumber || c.toPhone || '—';
                   const name = c.contactName || 'Client';
                   return (
                     <tr key={c.id}>
@@ -253,7 +253,7 @@ export const CallsPage: React.FC = () => {
                     AI Call Analysis & Transcript
                   </h3>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedCall.contactName || 'Client'}</strong> ({selectedCall.toNumber || selectedCall.toPhone})
+                    Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedCall.contactName || 'Client'}</strong> ({selectedCall.bridgeNumber || selectedCall.toNumber || selectedCall.toPhone})
                   </div>
                 </div>
               </div>

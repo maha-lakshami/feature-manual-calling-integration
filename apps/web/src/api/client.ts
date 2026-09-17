@@ -309,7 +309,7 @@ export const api = {
   calls: {
     list: () => request<{ items: any[]; page: any }>('/calls'),
     get: (id: string) => request<any>(`/calls/${id}`),
-    place: async (data: { contactId?: string; toPhone?: string; objective?: string; prompt?: string; scriptId?: string }) => {
+    place: async (data: { contactId?: string; toPhone?: string; objective?: string; prompt?: string; scriptId?: string; callType?: 'ai' | 'manual' }) => {
       let contactId = data.contactId;
       if (!contactId && data.toPhone) {
         // Find or create contact for the phone number
@@ -331,6 +331,7 @@ export const api = {
           contactId,
           objective: data.objective || data.prompt || 'Outbound customer confirmation',
           scriptId: data.scriptId,
+          callType: data.callType,
         }),
       });
     },

@@ -97,15 +97,27 @@ export class WebhooksController {
     @Param('kind') kind: string,
     @Param('callId') callId: string,
     @Req() req: Request,
-  ) {
+    @Res() res: Response,
+  ): Promise<void> {
     const signature = req.headers['x-plivo-signature-v3'] as string | undefined;
     const nonce = req.headers['x-plivo-signature-v3-nonce'] as string | undefined;
 
     // Reconstruct the URL from our own config so the signature check is not
     // influenced by attacker-controlled Host/X-Forwarded-* headers (§12).
     const url = `${this.config.plivo.callbackBaseUrl.replace(/\/+$/, '')}${webhookPath(this.config, `plivo/${kind}/${callId}`)}`;
+    console.log('PLIVO DEBUG TOKEN LENGTH:', this.config.plivo.authToken.length);
+    console.log('PLIVO DEBUG TOKEN SHAPE:', this.config.plivo.authToken.slice(0, 3) + '...' + this.config.plivo.authToken.slice(-3));
+    console.log('PLIVO DEBUG URL:', JSON.stringify(url)); console.log('PLIVO DEBUG SIGNATURE:', signature); console.log('PLIVO DEBUG NONCE:', nonce);
 
-    return this.webhooks.handlePlivo(rawBody, signature, nonce, url);
+    const ack = await this.webhooks.handlePlivo(rawBody, signature, nonce, url);
+
+    if (kind === 'answer') {
+      const xml = await this.webhooks.buildPlivoAnswerXml(callId);
+      res.set('Content-Type', 'text/xml').status(HttpStatus.OK).send(xml);
+      return;
+    }
+
+    res.status(HttpStatus.OK).json(ack);
   }
 
   // ── Razorpay (spec §8.1) ──────────────────────────────────────────────

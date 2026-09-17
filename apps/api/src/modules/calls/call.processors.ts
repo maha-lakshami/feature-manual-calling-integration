@@ -164,9 +164,11 @@ export class CallProcessors implements OnModuleInit {
             from: call.fromNumber,
             answerUrl: this.callbackUrl('answer', call.id),
             hangupUrl: this.callbackUrl('hangup', call.id),
+            recordingCallbackUrl: this.callbackUrl('recording', call.id),
             // §10 — recorded so the transcript and summary exist at all. The recording
             // is High sensitivity from here on.
             record: true,
+            disableMachineDetection: call.callType === 'manual',
           });
 
           await this.prisma.call.update({

@@ -129,8 +129,10 @@ export interface PlaceCallInput {
   /** Where the provider fetches call control instructions. */
   answerUrl: string;
   hangupUrl: string;
+  recordingCallbackUrl?: string;
   /** Provider-side recording, since §10 classifies recordings as High sensitivity. */
   record: boolean;
+  disableMachineDetection?: boolean;
 }
 
 export interface PlaceCallResult {

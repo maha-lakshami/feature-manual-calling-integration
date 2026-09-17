@@ -85,7 +85,7 @@ export class TelephonyMockProvider implements TelephonyProvider {
     this.logger.debug(`mock call → ${input.to} (${outcome}, ${durationSeconds}s)`);
 
     await this.callbacks.emit(`call lifecycle for ${providerCallId}`, async (sink) => {
-      await sink.callEvent({ providerCallId, event: 'ringing' });
+      await sink.callEvent({ providerCallId, event: 'ringing', delayMs: 100 });
 
       if (outcome !== 'completed') {
         await sink.callEvent({

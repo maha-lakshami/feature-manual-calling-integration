@@ -17,6 +17,7 @@ export const PlaceCallModal: React.FC<PlaceCallModalProps> = ({
 }) => {
   const [phone, setPhone] = useState(defaultPhone);
   const [prompt, setPrompt] = useState('Confirm address for scheduled afternoon delivery of shipment AGI-8492.');
+  const callType = 'manual' as const;
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,6 +31,7 @@ export const PlaceCallModal: React.FC<PlaceCallModalProps> = ({
       await api.calls.place({
         toPhone: phone,
         prompt,
+        callType,
       });
 
       onSuccess();
@@ -93,6 +95,7 @@ export const PlaceCallModal: React.FC<PlaceCallModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
           <div>
             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'block', marginBottom: '6px' }}>
               Client Phone Number (E.164) *
@@ -124,9 +127,9 @@ export const PlaceCallModal: React.FC<PlaceCallModalProps> = ({
 
           <div style={{ padding: '12px 14px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', gap: '8px' }}>
             <Sparkles size={16} color="#7c3aed" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <span>
-              Plivo dials and connects the client, recording the conversation. Upon completion, the audio transcript is analyzed by Gemini AI to produce an executive summary, actionable next steps, and priority rating.
-            </span>
+                        <span>
+                          Your phone will ring first. Once you answer, the customer will be connected automatically. The full conversation is recorded and analyzed by AI afterward.
+                        </span>
           </div>
 
           <button
@@ -137,7 +140,7 @@ export const PlaceCallModal: React.FC<PlaceCallModalProps> = ({
           >
             {isSubmitting ? (
               <>
-                <Loader2 size={18} className="animate-spin" /> Connecting Client...
+                <Loader2 size={18} className="animate-spin" /> Connecting...
               </>
             ) : (
               'Place Call'

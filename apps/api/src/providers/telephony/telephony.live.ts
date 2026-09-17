@@ -45,8 +45,8 @@ export class TelephonyLiveProvider implements TelephonyProvider {
     if (!from) {
       throw new ProviderError('telephony', 'placeCall', 'missing_from', 'No Plivo caller id is configured', false);
     }
-
-    const response = await fetch(`${this.accountUrl}/Call/`, {
+    
+        const response = await fetch(`${this.accountUrl}/Call/`, {
       method: 'POST',
       headers: { authorization: this.authHeader, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -56,15 +56,16 @@ export class TelephonyLiveProvider implements TelephonyProvider {
         answer_method: 'POST',
         hangup_url: input.hangupUrl,
         hangup_method: 'POST',
-        // Ring for 45s. Long enough for a driver to reach a phone, short enough
-        // that a dead number does not hold a concurrency slot for a minute.
+        ...(input.recordingCallbackUrl ? { recording_callback_url: input.recordingCallbackUrl, recording_callback_method: 'POST' } : {}),
+        record: input.record,
+        record_file_format: 'mp3',
         ring_timeout: 45,
-        machine_detection: 'hangup',
+        ...(input.disableMachineDetection ? {} : { machine_detection: 'hangup' }),
       }),
     }).catch((error: unknown) => {
       throw new ProviderError('telephony', 'placeCall', 'network_error', (error as Error).message, true);
     });
-
+    
     const body = (await response.json().catch(() => ({}))) as {
       request_uuid?: string;
       message?: string;
@@ -105,13 +106,17 @@ export class TelephonyLiveProvider implements TelephonyProvider {
       );
     }
   }
-
   async fetchRecording(providerCallId: string): Promise<CallRecording | null> {
     const response = await fetch(`${this.accountUrl}/Recording/?call_uuid=${encodeURIComponent(providerCallId)}`, {
       headers: { authorization: this.authHeader },
     }).catch((error: unknown) => {
       throw new ProviderError('telephony', 'fetchRecording', 'network_error', (error as Error).message, true);
     });
+
+    const rawBody = await response.clone().text().catch(() => '(could not read body)');
+    console.log('FETCH RECORDING DEBUG - providerCallId:', providerCallId);
+    console.log('FETCH RECORDING DEBUG - status:', response.status);
+    console.log('FETCH RECORDING DEBUG - body:', rawBody);
 
     if (!response.ok) {
       throw new ProviderError(

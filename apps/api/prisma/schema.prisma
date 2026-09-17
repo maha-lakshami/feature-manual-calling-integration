@@ -999,6 +999,7 @@ model CampaignRecipient {
 // reference, duration (§5, §9.3)
 // ─────────────────────────────────────────────────────────────────────────────
 
+
 model Call {
   id        String @id @default(uuid()) @db.Uuid
   tenantId  String @map("tenant_id") @db.Uuid
@@ -1006,40 +1007,31 @@ model Call {
 
   direction CallDirection @default(outbound)
   status    CallStatus    @default(queued)
+  callType     String  @default("ai") @map("call_type")
+  bridgeNumber String? @map("bridge_number")
   outcome   CallOutcome?
 
-  /// Spec §5.1 step 1 — the Plivo call UUID. Also the metering idempotency key
-  /// for per-minute billing (§8.2).
   providerCallId String? @unique @map("provider_call_id")
 
-  /// Originating telephony provider (e.g. 'plivo', 'mock-telephony'). Nullable for legacy calls. No default.
   provider String? @map("provider")
 
   fromNumber String @map("from_number")
   toNumber   String @map("to_number")
 
   durationSeconds Int     @default(0) @map("duration_seconds")
-  /// Rounded up from durationSeconds — the metered unit (§5.3).
   billedMinutes   Int     @default(0) @map("billed_minutes")
   costPaise       BigInt? @map("cost_paise")
 
-  /// Spec §5.1 step 4 — S3 object key, never a public URL. Access is logged
-  /// (§10 "Access should be logged").
   recordingKey             String? @map("recording_key")
   recordingDurationSeconds Int?    @map("recording_duration_seconds")
 
-  /// Spec §5.1 step 5 — post-call extraction/summarization.
   summary    String?
   nextAction String? @map("next_action")
 
-  /// Spec §5.2 — "the agent's script/prompt is versioned and reviewed like code
-  /// before any change reaches live calls". Recorded per call so a bad response
-  /// can be traced to the exact prompt that produced it.
   scriptId      String? @map("script_id")
   promptVersion String? @map("prompt_version")
   objective     String?
 
-  /// Spec §5.2 — escalation to a human.
   escalatedAt      DateTime? @map("escalated_at")
   escalationReason String?   @map("escalation_reason")
 
