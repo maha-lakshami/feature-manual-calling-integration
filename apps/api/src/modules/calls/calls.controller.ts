@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   CallOutcome,
@@ -91,6 +91,34 @@ export class CallsController {
       tenantId ?? principal.tenantId ?? undefined,
       `read call ${callId}`,
       () => this.calls.get(callId),
+    );
+  }
+
+  @Patch(':callId')
+  @RequirePermission(Permission.CALLS_TRIGGER)
+  @ApiOperation({ summary: 'Manually edit the AI-generated summary, priority, or sentiment' })
+  async updateAnalysis(
+    @CurrentUser() principal: RequestPrincipal,
+    @Param('callId') callId: string,
+    @Body() body: {
+      summary?: string;
+      nextAction?: string;
+      priority?: string;
+      sentiment?: string;
+      salesOutcome?: string;
+      requirement?: string;
+      objection?: string;
+      followUpRequired?: boolean;
+      followUpDate?: string;
+      followUpTime?: string;
+    },
+    @Query('tenantId') tenantId?: string,
+  ): Promise<CallDto> {
+    return this.tenantAccess.asCaller(
+      principal,
+      tenantId ?? principal.tenantId ?? undefined,
+      `update analysis for call ${callId}`,
+      () => this.calls.updateAnalysis(callId, body),
     );
   }
 

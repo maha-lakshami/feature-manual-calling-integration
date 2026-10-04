@@ -34,13 +34,6 @@ import type {
 export interface LoginRequest {
   email: string;
   password: string;
-  /**
-   * Which tenant to open the session against.
-   *
-   * Only needed by a user who belongs to more than one tenant — one email may hold a
-   * membership in several (spec §9.3 `tenant_users` is unique per tenant *and* user).
-   * Omitted, the earliest active membership is used.
-   */
   tenantSlug?: string;
 }
 
@@ -49,11 +42,9 @@ export interface AuthenticatedUser {
   email: string;
   fullName: string;
   isSuperAdmin: boolean;
-  /** Null for a Super Admin's platform-level session (spec §3.1). */
   tenantId: string | null;
   tenantName: string | null;
   role: Role;
-  /** Resolved from the matrix + this tenant's §4.4 policy — drives the UI nav. */
   permissions: Permission[];
 }
 
@@ -65,17 +56,11 @@ export interface LoginResponse {
 
 // ── Tenants (spec §4.2 Super Admin actions) ──────────────────────────────────
 
-/** Resolves the spec's open items (§4.4, §5.3) as per-tenant configuration. */
 export interface TenantSettings {
-  /** §4.4 open item — defaults to false until the policy is confirmed. */
   staffCanLaunchCampaigns: boolean;
-  /** §4.4 open item — defaults to false. */
   staffCanTriggerCalls: boolean;
-  /** §5.3 open item — hard-stop or run against a soft limit. */
   lowBalanceBehavior: LowBalanceBehavior;
-  /** How far below zero a soft-limit tenant may go, in paise. */
   softLimitPaise: string;
-  /** Warn in the dashboard below this balance. */
   lowBalanceThresholdPaise: string;
 }
 
@@ -88,7 +73,6 @@ export interface TenantDto {
   contactEmail: string | null;
   settings: TenantSettings;
   createdAt: string;
-  /** Present for Super Admin listings (spec §4.2 cross-tenant billing view). */
   wallet?: WalletSummaryDto;
   contactCount?: number;
 }
@@ -98,11 +82,9 @@ export interface OnboardTenantRequest {
   slug?: string;
   contactEmail?: string;
   plan?: string;
-  /** Manager account created alongside the tenant. */
   managerEmail: string;
   managerFullName: string;
   managerPassword?: string;
-  /** Overrides ONBOARDING_FREE_CREDITS_PAISE (spec §8.3). */
   freeCreditsPaise?: string;
   settings?: Partial<TenantSettings>;
 }
@@ -113,7 +95,7 @@ export interface OnboardTenantResponse {
   freeCreditsGranted: MoneyDto;
 }
 
-// ── Users / staff (spec §4.2 "Invite / remove staff within own tenant") ───────
+// ── Users / staff ─────────────────────────────────────────────────────────────
 
 export interface TenantUserDto {
   id: string;
@@ -159,9 +141,7 @@ export interface ContactDto {
   fullName: string;
   phone: string | null;
   email: string | null;
-  /** Spec §7 — flexible per-tenant fields with no schema change. */
   customFields: Record<string, unknown>;
-  /** Spec §12 — WhatsApp opt-in captured per contact. */
   whatsappOptedIn: boolean;
   emailOptedIn: boolean;
   optedOutAt: string | null;
@@ -183,9 +163,7 @@ export interface CreateContactRequest {
 export type UpdateContactRequest = Partial<CreateContactRequest>;
 
 export interface BulkImportContactsRequest {
-  /** Raw CSV text. Header row required; `fullName` is the only mandatory column. */
   csv: string;
-  /** Unrecognised columns become customFields entries when true (spec §7). */
   unknownColumnsAsCustomFields?: boolean;
 }
 
@@ -211,30 +189,21 @@ export type BulkImportContactsResponse = ContactImportDto;
 
 // ── Wallet (spec §8) ─────────────────────────────────────────────────────────
 
-/** What a Staff user is allowed to see — spec §8.4 / §4.2 `allow_limited`. */
 export interface WalletSummaryDto {
-  /** Paid + free, the spendable total. */
   balance: MoneyDto;
   paidBalance: MoneyDto;
   freeCreditBalance: MoneyDto;
-  /** Total money recharged / paid top-ups by the tenant (excluding promotional credits) */
   totalRecharged?: MoneyDto;
-  /** Total lifetime debited / spent on platform */
   totalSpent?: MoneyDto;
-  /** Total promotional free credits granted */
   totalFreeCreditsGranted?: MoneyDto;
-  /** Number of top-up recharges completed */
   rechargeCount?: number;
   lastRechargeAt?: string | null;
-  /** Currently held by in-flight reservations (spec §15 reserve-then-confirm). */
   reservedBalance: MoneyDto;
-  /** balance - reservedBalance. What a new action can actually spend. */
   availableBalance: MoneyDto;
   lowBalance: boolean;
   updatedAt: string;
 }
 
-/** Spec §8.4 — Staff get the balance plus a recent-activity summary, no ledger. */
 export interface WalletStaffViewDto {
   summary: WalletSummaryDto;
   recentActivity: {
@@ -250,7 +219,6 @@ export interface WalletTransactionDto {
   id: string;
   type: WalletTransactionType;
   bucket: BalanceBucket;
-  /** Signed: positive credits, negative debits. */
   amount: MoneyDto;
   balanceAfter: MoneyDto;
   description: string;
@@ -259,7 +227,6 @@ export interface WalletTransactionDto {
   createdAt: string;
 }
 
-/** Spec §8.4 — Managers see the full itemized ledger. */
 export interface WalletLedgerDto {
   summary: WalletSummaryDto;
   transactions: WalletTransactionDto[];
@@ -269,30 +236,24 @@ export interface WalletLedgerDto {
 // ── Razorpay top-up (spec §8.1) ──────────────────────────────────────────────
 
 export interface CreateTopupRequest {
-  /** Integer paise. The spec's initial top-up is ₹5,000 = 500000 paise. */
   amountPaise: string;
   notes?: Record<string, string>;
 }
 
-/** Everything the frontend needs to open Razorpay Checkout (spec §8.1 step 2). */
 export interface CreateTopupResponse {
   orderId: string;
   razorpayOrderId: string;
   amount: MoneyDto;
   currency: string;
-  /** Publishable key id — the secret never leaves the server. */
   keyId: string;
-  /** True in mock mode: Checkout is simulated, no real payment page. */
   mock: boolean;
-  /** Mock mode only — POST this to /webhooks/razorpay to simulate capture. */
   mockCapturePath?: string;
 }
 
-// ── Pricing (spec §9.3 `pricing_rules`, editable without redeploy) ────────────
+// ── Pricing ───────────────────────────────────────────────────────────────────
 
 export interface PricingRuleDto {
   id: string;
-  /** Null = platform default, applies to every tenant without an override. */
   tenantId: string | null;
   eventType: UsageEventType;
   unitPrice: MoneyDto;
@@ -302,7 +263,7 @@ export interface PricingRuleDto {
   active: boolean;
 }
 
-// ── Usage (spec §9.3 `usage_events`, immutable billing source) ────────────────
+// ── Usage ──────────────────────────────────────────────────────────────────────
 
 export interface UsageEventDto {
   id: string;
@@ -310,7 +271,6 @@ export interface UsageEventDto {
   quantity: number;
   unitPrice: MoneyDto;
   totalCharge: MoneyDto;
-  /** The provider's own reference — the idempotency key (spec §8.2). */
   idempotencyKey: string;
   contactId: string | null;
   campaignId: string | null;
@@ -328,7 +288,6 @@ export interface TemplateDto {
   language: string;
   subject: string | null;
   body: string;
-  /** Placeholder names found in `body`, e.g. ["fullName","shipmentRef"]. */
   variables: string[];
   providerTemplateName: string | null;
   submittedAt: string | null;
@@ -379,7 +338,6 @@ export interface CampaignDto {
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
-  /** Per-recipient counters (spec §6.1 — failures are per-recipient). */
   stats: CampaignStatsDto;
   estimatedCost: MoneyDto;
   actualCost: MoneyDto;
@@ -405,11 +363,9 @@ export interface CreateCampaignRequest {
   name: string;
   channel: Channel;
   templateId: string;
-  /** Explicit recipients; omit to use `filter`. */
   contactIds?: string[];
   filter?: { tags?: string[]; all?: boolean };
   scheduledAt?: string;
-  /** Per-campaign variable defaults, merged under each contact's own fields. */
   variables?: Record<string, string>;
 }
 
@@ -433,7 +389,6 @@ export interface LaunchCampaignResponse {
   status: CampaignStatus;
   queuedRecipients: number;
   estimatedCost: MoneyDto;
-  /** Set when the launch was refused for funds (spec §8.2 "top-up required"). */
   insufficientFunds?: {
     required: MoneyDto;
     available: MoneyDto;
@@ -447,7 +402,6 @@ export interface TranscriptTurnDto {
   sequence: number;
   speaker: TranscriptSpeaker;
   text: string;
-  /** Deepgram confidence, 0–1, where the provider reports it. */
   confidence: number | null;
   atSeconds: number;
 }
@@ -457,27 +411,28 @@ export interface CallDto {
   contactId: string;
   contactName: string;
   direction: CallDirection;
-    /** 'ai' = automated voice agent, 'manual' = a real salesperson bridged in via phone. */
   callType: 'ai' | 'manual';
   bridgeNumber: string | null;
   status: CallStatus;
   outcome: CallOutcome | null;
-  /** Plivo call UUID — also the metering idempotency key (spec §8.2). */
   providerCallId: string | null;
   fromNumber: string;
   toNumber: string;
   durationSeconds: number;
   billedMinutes: number;
   cost: MoneyDto | null;
-  /** Spec §5.1 step 4 — S3 reference, never a public URL. */
   recordingKey: string | null;
-  /** Spec §5.1 step 5 — Post-call AI intelligence */
   summary: string | null;
   nextAction: string | null;
   priority: 'urgent' | 'high' | 'medium' | 'low' | null;
   sentiment: 'positive' | 'neutral' | 'negative' | null;
+  salesOutcome: 'interested' | 'not_interested' | 'callback_requested' | 'converted' | null;
+  requirement: string | null;
+  objection: string | null;
+  followUpRequired: boolean | null;
+  followUpDate: string | null;
+  followUpTime: string | null;
   transcript: TranscriptTurnDto[];
-  /** Spec §5.2 — the versioned, reviewed prompt this call ran under. */
   promptVersion: string | null;
   escalatedAt: string | null;
   startedAt: string | null;
@@ -487,10 +442,24 @@ export interface CallDto {
 
 export interface PlaceCallRequest {
   contactId: string;
-  /** Which reviewed agent script to run (spec §5.2). */
   scriptId?: string;
   objective?: string;
-  metadata?: Record<string, unknown>; /** 'ai' (default, automated voice agent) or 'manual' (click-to-call bridge to a real salesperson). */ callType?: 'ai' | 'manual'; 
+  metadata?: Record<string, unknown>;
+  callType?: 'ai' | 'manual';
+}
+
+/** Manual editing of a call's AI-generated analysis — the "Save Changes" button on the call details modal. */
+export interface UpdateCallAnalysisRequest {
+  summary?: string;
+  nextAction?: string;
+  priority?: 'urgent' | 'high' | 'medium' | 'low';
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  salesOutcome?: 'interested' | 'not_interested' | 'callback_requested' | 'converted';
+  requirement?: string;
+  objection?: string;
+  followUpRequired?: boolean;
+  followUpDate?: string;
+  followUpTime?: string;
 }
 
 // ── 360° timeline (spec §6.4) ────────────────────────────────────────────────
@@ -544,7 +513,6 @@ export interface CallReportDto {
   trend: Array<{ date: string; calls: number; minutes: number }>;
 }
 
-/** Spec §11.1 / §8.4 — full detail for Managers, summary for Staff. */
 export interface UsageReportDto {
   windowStart: string;
   windowEnd: string;
@@ -555,7 +523,6 @@ export interface UsageReportDto {
   trend: Array<{ date: string; spend: MoneyDto }>;
 }
 
-/** Spec §4.2 — Super Admin only. */
 export interface CrossTenantUsageDto {
   tenants: Array<{
     tenantId: string;
@@ -586,25 +553,13 @@ export interface Paginated<T> {
 
 export interface ApiErrorBody {
   statusCode: number;
-  /** Stable machine-readable code, e.g. INSUFFICIENT_FUNDS. */
   code: string;
   message: string;
-  /**
-   * Machine-readable context whose keys depend on `code`.
-   *
-   * A record rather than a fixed field-error array because the codes carry
-   * genuinely different context: `INSUFFICIENT_FUNDS` sends
-   * `{ requiredPaise, availablePaise, shortfallPaise }` so the dashboard can name
-   * the exact top-up amount (spec §8.2), a validation failure sends
-   * `{ issues: string[] }`, and `CROSS_TENANT_ACCESS` sends the reason. Nothing in
-   * here is ever an internal message or a stack.
-   */
   details?: Record<string, unknown>;
   path: string;
   timestamp: string;
 }
 
-/** Stable error codes the dashboard branches on. */
 export const ApiErrorCode = {
   INSUFFICIENT_FUNDS: 'INSUFFICIENT_FUNDS',
   TOPUP_REQUIRED: 'TOPUP_REQUIRED',

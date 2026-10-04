@@ -138,7 +138,7 @@ export const WalletPage: React.FC = () => {
               <tbody>
                 {wallet?.transactions?.length > 0 ? (
                   wallet.transactions.map((tx: any) => {
-                    const isCredit = tx.amount?.rupees > 0 || tx.type.includes('credit') || tx.type.includes('grant');
+                    const isCredit = (tx.amount?.rupees ?? 0) > 0;
                     return (
                       <tr key={tx.id}>
                         <td>
@@ -149,7 +149,7 @@ export const WalletPage: React.FC = () => {
                         </td>
                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{tx.description}</td>
                         <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: isCredit ? '#166534' : '#9f1239' }}>
-                          {isCredit ? '+' : '-'}{tx.amount?.formatted || '—'}
+                            {tx.amount?.formatted || '—'}
                         </td>
                         <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                           {new Date(tx.createdAt).toLocaleString()}

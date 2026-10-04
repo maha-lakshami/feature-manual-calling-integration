@@ -14,6 +14,7 @@ import {
   Headphones,
   FileText,
   Tag,
+  CalendarClock,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { PlaceCallModal } from '../components/calls/PlaceCallModal';
@@ -27,6 +28,18 @@ export const CallsPage: React.FC = () => {
   const [callTurns, setCallTurns] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTurns, setIsLoadingTurns] = useState(false);
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [editedSummary, setEditedSummary] = useState('');
+  const [editedNextAction, setEditedNextAction] = useState('');
+  const [editedPriority, setEditedPriority] = useState('medium');
+  const [editedSentiment, setEditedSentiment] = useState('neutral');
+  const [editedSalesOutcome, setEditedSalesOutcome] = useState('interested');
+  const [editedRequirement, setEditedRequirement] = useState('');
+  const [editedObjection, setEditedObjection] = useState('');
+  const [editedFollowUpRequired, setEditedFollowUpRequired] = useState(false);
+  const [editedFollowUpDate, setEditedFollowUpDate] = useState('');
+  const [editedFollowUpTime, setEditedFollowUpTime] = useState('');
+  const [isSavingAnalysis, setIsSavingAnalysis] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canPlaceCall = user?.permissions.includes('calls:trigger') === true;
 
@@ -49,6 +62,17 @@ export const CallsPage: React.FC = () => {
 
   const handleOpenTranscript = async (call: any) => {
     setSelectedCall(call);
+    setEditedSummary(call.summary || '');
+    setEditedNextAction(call.nextAction || '');
+    setEditedPriority(call.priority || 'medium');
+    setEditedSentiment(call.sentiment || 'neutral');
+    setEditedSalesOutcome(call.salesOutcome || 'interested');
+    setEditedRequirement(call.requirement || '');
+    setEditedObjection(call.objection || '');
+    setEditedFollowUpRequired(call.followUpRequired ?? false);
+    setEditedFollowUpDate(call.followUpDate || '');
+    setEditedFollowUpTime(call.followUpTime || '');
+    setIsEditingSummary(false);
     setIsLoadingTurns(true);
     try {
       const data = await api.calls.get(call.id);
@@ -58,6 +82,32 @@ export const CallsPage: React.FC = () => {
       setCallTurns(call.transcript || []);
     } finally {
       setIsLoadingTurns(false);
+    }
+  };
+
+  const handleSaveAnalysis = async () => {
+    if (!selectedCall) return;
+    setIsSavingAnalysis(true);
+    try {
+      const updated = await api.calls.update(selectedCall.id, {
+        summary: editedSummary,
+        nextAction: editedNextAction,
+        priority: editedPriority,
+        sentiment: editedSentiment,
+        salesOutcome: editedSalesOutcome,
+        requirement: editedRequirement,
+        objection: editedObjection,
+        followUpRequired: editedFollowUpRequired,
+        followUpDate: editedFollowUpDate,
+        followUpTime: editedFollowUpTime,
+      });
+      setSelectedCall(updated);
+      setIsEditingSummary(false);
+      setCalls((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) {
+      console.error('Failed to save analysis:', err);
+    } finally {
+      setIsSavingAnalysis(false);
     }
   };
 
@@ -265,16 +315,49 @@ export const CallsPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Badges Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 14px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '18px' }}>
+            {/* Badges Bar — now editable */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', padding: '10px 14px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>PRIORITY:</span>
-                {renderPriorityBadge(selectedCall.priority)}
+                <select
+                  value={editedPriority}
+                  onChange={(e) => setEditedPriority(e.target.value)}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                    background: '#ffffff',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="low">LOW</option>
+                  <option value="medium">MEDIUM</option>
+                  <option value="high">HIGH</option>
+                  <option value="urgent">URGENT</option>
+                </select>
               </div>
               <div style={{ width: '1px', height: '16px', background: 'var(--border-subtle)' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>SENTIMENT:</span>
-                {renderSentimentPill(selectedCall.sentiment)}
+                <select
+                  value={editedSentiment}
+                  onChange={(e) => setEditedSentiment(e.target.value)}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                    background: '#ffffff',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="positive">POSITIVE</option>
+                  <option value="neutral">NEUTRAL</option>
+                  <option value="negative">NEGATIVE</option>
+                </select>
               </div>
               <div style={{ width: '1px', height: '16px', background: 'var(--border-subtle)' }} />
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -282,29 +365,147 @@ export const CallsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* AI Summary Card */}
+            {/* AI Summary Card — now editable */}
             <div style={{ padding: '14px 16px', background: '#eff6ff', borderRadius: 'var(--radius-md)', border: '1px solid #bfdbfe', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', marginBottom: '6px' }}>
                 <Sparkles size={14} color="#2563eb" />
                 <span>Executive Summary</span>
               </div>
-              <div style={{ color: '#1e293b', fontSize: '0.9rem', lineHeight: 1.55 }}>
-                {selectedCall.summary || 'No summary is available for this call.'}
-              </div>
+              <textarea
+                value={editedSummary}
+                onChange={(e) => setEditedSummary(e.target.value)}
+                placeholder="No summary is available for this call."
+                rows={3}
+                style={{
+                  width: '100%',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.55,
+                  color: '#1e293b',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #bfdbfe',
+                  background: '#ffffff',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                }}
+              />
             </div>
 
-            {/* Next Actions Card */}
-            <div style={{ padding: '14px 16px', background: '#fdf4ff', borderRadius: 'var(--radius-md)', border: '1px solid #f0abfc', marginBottom: '18px' }}>
+            {/* Next Actions Card — now editable */}
+            <div style={{ padding: '14px 16px', background: '#fdf4ff', borderRadius: 'var(--radius-md)', border: '1px solid #f0abfc', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, color: '#86198f', textTransform: 'uppercase', marginBottom: '6px' }}>
                 <CheckCircle2 size={14} color="#a21caf" />
                 <span>Action Items & Next Steps</span>
               </div>
-              <div style={{ color: '#3b0764', fontSize: '0.9rem', fontWeight: 600 }}>
-                {selectedCall.nextAction && selectedCall.nextAction !== 'None'
-                  ? selectedCall.nextAction
-                  : 'No next action has been recorded.'}
-              </div>
+              <textarea
+                value={editedNextAction}
+                onChange={(e) => setEditedNextAction(e.target.value)}
+                placeholder="No next action has been recorded."
+                rows={2}
+                style={{
+                  width: '100%',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  color: '#3b0764',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #f0abfc',
+                  background: '#ffffff',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                }}
+              />
             </div>
+
+            {/* Sales Follow-up Card — new */}
+            <div style={{ padding: '14px 16px', background: '#fffbeb', borderRadius: 'var(--radius-md)', border: '1px solid #fde68a', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', marginBottom: '10px' }}>
+                <CalendarClock size={14} color="#b45309" />
+                <span>Sales Follow-up</span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>OUTCOME</label>
+                  <select
+                    value={editedSalesOutcome}
+                    onChange={(e) => setEditedSalesOutcome(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #fde68a', background: '#ffffff', color: '#1e293b' }}
+                  >
+                    <option value="interested">Interested</option>
+                    <option value="not_interested">Not Interested</option>
+                    <option value="callback_requested">Callback Requested</option>
+                    <option value="converted">Converted</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>FOLLOW-UP REQUIRED?</label>
+                  <select
+                    value={editedFollowUpRequired ? 'yes' : 'no'}
+                    onChange={(e) => setEditedFollowUpRequired(e.target.value === 'yes')}
+                    style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #fde68a', background: '#ffffff', color: '#1e293b' }}
+                  >
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>REQUIREMENT</label>
+                <input
+                  type="text"
+                  value={editedRequirement}
+                  onChange={(e) => setEditedRequirement(e.target.value)}
+                  placeholder="What the customer needs"
+                  style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #fde68a', background: '#ffffff', color: '#1e293b' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>OBJECTION</label>
+                <input
+                  type="text"
+                  value={editedObjection}
+                  onChange={(e) => setEditedObjection(e.target.value)}
+                  placeholder="Why they're hesitant, if any"
+                  style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #fde68a', background: '#ffffff', color: '#1e293b' }}
+                />
+              </div>
+
+              {editedFollowUpRequired && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>FOLLOW-UP DATE</label>
+                    <input
+                      type="date"
+                      value={editedFollowUpDate}
+                      onChange={(e) => setEditedFollowUpDate(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #fde68a', background: '#ffffff', color: '#1e293b' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>FOLLOW-UP TIME</label>
+                    <input
+                      type="time"
+                      value={editedFollowUpTime}
+                      onChange={(e) => setEditedFollowUpTime(e.target.value)}
+                      style={{ width: '100%', padding: '6px 8px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #fde68a', background: '#ffffff', color: '#1e293b' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Save button for the edits above */}
+            <button
+              onClick={handleSaveAnalysis}
+              disabled={isSavingAnalysis}
+              className="btn btn-emerald"
+              style={{ width: '100%', marginBottom: '18px', justifyContent: 'center' }}
+            >
+              {isSavingAnalysis ? 'Saving…' : 'Save Changes'}
+            </button>
 
             {/* Turn by turn dialogue */}
             <div style={{ marginBottom: '8px' }}>

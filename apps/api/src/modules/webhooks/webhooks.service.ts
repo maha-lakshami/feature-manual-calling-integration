@@ -581,7 +581,7 @@ export class WebhooksService {
           this.logger.warn(`Explicit Record API call failed: ${(error as Error).message}`);
         }
 
-        return `<Response><Record recordSession="true" fileFormat="mp3" callbackUrl="${this.config.plivo.callbackBaseUrl.replace(/\/+$/, '')}/api/webhooks/plivo/recording/${callId}" /><Dial callerId="${safeCallerId}"><Number>${safeCustomer}</Number></Dial></Response>`;
+        return `<Response><Record recordSession="true" fileFormat="mp3" channels="dual" callbackUrl="${this.config.plivo.callbackBaseUrl.replace(/\/+$/, '')}/api/webhooks/plivo/recording/${callId}" /><Dial callerId="${safeCallerId}"><Number>${safeCustomer}</Number></Dial></Response>`;
       }
       return '<Response></Response>';
     });

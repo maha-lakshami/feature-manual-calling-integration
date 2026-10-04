@@ -34,24 +34,10 @@ import { WalletService } from '../wallet/wallet.service';
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 
-/**
- * What a call is assumed to cost before it happens — spec §5.3.
- *
- * Only a hold, never a charge: `settle()` bills the minutes that actually elapsed.
- * Three minutes is a deliberate over-estimate of a delivery-confirmation call, because
- * the failure mode of under-estimating is worse. Under-estimate and two concurrent
- * calls can both pass the balance check and the second one overdraws; over-estimate and
- * a tenant briefly sees less spendable balance than they have.
- *
- * Exported so `call-place` holds exactly what this checked. Two constants that had to
- * agree by convention would eventually stop agreeing.
- */
 export const ESTIMATED_CALL_MINUTES = 3;
 
-/** Spec §10 — a recording link is deliberately short-lived. */
 const RECORDING_URL_TTL_SECONDS = 300;
 
-/** The default objective, when the caller does not give one. */
 const DEFAULT_OBJECTIVE = 'delivery_confirmation';
 
 export interface ListCallsQuery {
@@ -62,7 +48,6 @@ export interface ListCallsQuery {
   contactId?: string;
 }
 
-/** A telephony callback, in the shape `ProviderCallbackSink.callEvent` delivers it. */
 export interface CallEventInput {
   providerCallId: string;
   event: 'ringing' | 'answered' | 'completed' | 'failed' | 'no_answer' | 'busy';
@@ -78,14 +63,6 @@ export interface RecordingReadyInput {
   durationSeconds: number;
 }
 
-/**
- * Statuses past which a call is finished.
- *
- * Callbacks arrive out of order — a `ringing` can land after the `completed` it
- * preceded, and a retried webhook can replay one from ten minutes ago. Applying either
- * to a finished call would walk the status backwards, so the terminal set is checked
- * first and late callbacks are dropped.
- */
 const TERMINAL_STATUSES: readonly CallStatus[] = [
   CallStatus.COMPLETED,
   CallStatus.NO_ANSWER,
@@ -94,28 +71,6 @@ const TERMINAL_STATUSES: readonly CallStatus[] = [
   CallStatus.ESCALATED,
 ];
 
-/**
- * AI voice calls — spec §5.
- *
- * The §5.1 pipeline is five steps: place the call, record it, transcribe it, summarize
- * it, decide whether a human is needed. Only the first is triggered by a request; the
- * rest are driven by the provider's own callbacks, so this service is split accordingly:
- *
- * - `place()` runs on the request path and does the money and consent checks, then
- *   hands the dial to the `call-place` queue (§3.4 — an HTTP request never waits on a
- *   telephony provider).
- * - `applyCallEvent()` / `applyRecordingReady()` are the only entrypoints the webhooks
- *   module uses. They resolve the tenant from **our own** row keyed by the provider's
- *   call id, never from the callback body.
- *
- * The money sequence mirrors the campaign sends, with one addition that voice forces:
- * the cost is not known until the call ends. So `place()` reserves an estimate,
- * `completed` settles the minutes that actually elapsed, and every unbilled outcome —
- * no answer, busy, provider failure — releases the hold in full. §15 names "billing a
- * tenant for a message that then fails at the provider" as a risk; for voice the
- * equivalent is being billed three minutes for a phone that rang out, and the release
- * path is what prevents it.
- */
 @Injectable()
 export class CallsService {
   private readonly logger = new Logger(CallsService.name);
@@ -148,8 +103,6 @@ export class CallsService {
     const [rows, total] = await Promise.all([
       this.prisma.call.findMany({
         where,
-        // The list does not include transcripts: a page of 25 calls at ~20 turns each
-        // is 500 rows of text nobody reads until they open one.
         include: { contact: { select: { fullName: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
@@ -164,7 +117,6 @@ export class CallsService {
     };
   }
 
-  /** One call, with its transcript — the §5.2 review view. */
   async get(callId: string): Promise<CallDto> {
     const call = await this.prisma.call.findUnique({
       where: { id: callId },
@@ -178,22 +130,7 @@ export class CallsService {
     return toCallDto(call, call.contact.fullName, call.transcriptTurns);
   }
 
-  /**
-   * Queue an outbound AI call — spec §5.1 step 1.
-   *
-   * Four gates before a row exists, in this order:
-   *
-   * 1. the contact resolves within the caller's tenant (a cross-tenant id 404s here,
-   *    because the lookup goes through `ContactsService`);
-   * 2. there is a number to dial;
-   * 3. §12 consent — a contact who opted out is not called, and that check happens
-   *    before the money check so an opted-out contact never produces a hold;
-   * 4. §8.2 the wallet can fund the estimate.
-   *
-   * Only then is the `Call` row written and the dial queued. Doing it in the other
-   * order would leave `queued` calls that can never be placed.
-   */
-    async place(request: PlaceCallRequest, createdBy: string): Promise<CallDto> {
+  async place(request: PlaceCallRequest, createdBy: string): Promise<CallDto> {
     const tenantId = this.tenantContext.requireTenantId('calls.place');
     const contact = await this.contacts.get(request.contactId);
     const isManual = request.callType === 'manual';
@@ -257,22 +194,58 @@ export class CallsService {
     return toCallDto(call, call.contact.fullName, []);
   }
 
-  /**
-   * Hand the call to a human — spec §5.2.
-   *
-   * Runs the provider hangup inline rather than through the queue, which is the one
-   * deliberate exception to §3.4's "async always": the point of escalating is that the
-   * AI stops talking to the customer *now*, and a queue hop measured in seconds is a
-   * queue hop the customer spends listening to a bot. The billing still settles on the
-   * provider's own `completed` callback, so the money path is unchanged.
-   */
+  async updateAnalysis(
+    callId: string,
+    input: {
+      summary?: string;
+      nextAction?: string;
+      priority?: string;
+      sentiment?: string;
+      salesOutcome?: string;
+      requirement?: string;
+      objection?: string;
+      followUpRequired?: boolean;
+      followUpDate?: string;
+      followUpTime?: string;
+    },
+  ): Promise<CallDto> {
+    const call = await this.require(callId);
+
+    const existingMetadata =
+      call.metadata && typeof call.metadata === 'object' ? (call.metadata as Record<string, unknown>) : {};
+    const updatedMetadata = {
+      ...existingMetadata,
+      ...(input.priority !== undefined ? { priority: input.priority } : {}),
+      ...(input.sentiment !== undefined ? { sentiment: input.sentiment } : {}),
+      ...(input.salesOutcome !== undefined ? { salesOutcome: input.salesOutcome } : {}),
+      ...(input.requirement !== undefined ? { requirement: input.requirement } : {}),
+      ...(input.objection !== undefined ? { objection: input.objection } : {}),
+      ...(input.followUpRequired !== undefined ? { followUpRequired: input.followUpRequired } : {}),
+      ...(input.followUpDate !== undefined ? { followUpDate: input.followUpDate } : {}),
+      ...(input.followUpTime !== undefined ? { followUpTime: input.followUpTime } : {}),
+    };
+
+    const updated = await this.prisma.call.update({
+      where: { id: callId },
+      data: {
+        ...(input.summary !== undefined ? { summary: input.summary } : {}),
+        ...(input.nextAction !== undefined ? { nextAction: input.nextAction } : {}),
+        metadata: updatedMetadata as Prisma.InputJsonValue,
+      },
+      include: {
+        contact: { select: { fullName: true } },
+        transcriptTurns: { orderBy: { sequence: 'asc' } },
+      },
+    });
+
+    return toCallDto(updated, updated.contact.fullName, updated.transcriptTurns);
+  }
+
   async escalate(callId: string, reason: string): Promise<CallDto> {
     const call = await this.require(callId);
 
     if (call.providerCallId && !TERMINAL_STATUSES.includes(call.status as CallStatus)) {
       await this.telephony.hangup(call.providerCallId).catch((error: unknown) => {
-        // The call may already have ended on its own. Escalation is a record of a
-        // decision, and failing it because the line was already dead would lose that.
         this.logger.warn(`hangup during escalation of call ${callId} failed: ${(error as Error).message}`);
       });
     }
@@ -306,7 +279,6 @@ export class CallsService {
     return toCallDto(updated, updated.contact.fullName, updated.transcriptTurns);
   }
 
-  /** End a call in progress. The `completed` callback does the billing. */
   async hangup(callId: string): Promise<CallDto> {
     const call = await this.require(callId);
 
@@ -325,15 +297,6 @@ export class CallsService {
     return this.get(callId);
   }
 
-  /**
-   * A time-limited link to the recording — spec §10.
-   *
-   * Recordings are classified High sensitivity, which the spec spells out as encrypted
-   * at rest, access logged, and never served from a permanent public URL. All three are
-   * here: the object lives in S3 (or the local mock's directory), the link expires in
-   * five minutes, and every issued link writes a log line naming who asked — "access
-   * logged" is only true if something actually writes the line.
-   */
   async recordingUrl(callId: string, actor: string): Promise<{ url: string; expiresInSeconds: number }> {
     const call = await this.require(callId);
 
@@ -353,15 +316,6 @@ export class CallsService {
 
   // ── Provider callbacks ─────────────────────────────────────────────────────
 
-  /**
-   * Apply a telephony status callback — spec §5.1.
-   *
-   * The tenant is resolved from our own `calls` row, keyed by the provider's call id,
-   * and then a worker scope is opened on it. Nothing in the callback body selects a
-   * tenant, so a forged payload can at worst name a call that does not exist. That is
-   * the §4.3 rule ("never a client-supplied tenant identifier") applied to a request
-   * that has no JWT to derive a tenant from.
-   */
   async applyCallEvent(input: CallEventInput): Promise<void> {
     const located = await this.locate(input.providerCallId);
     if (!located) {
@@ -402,17 +356,6 @@ export class CallsService {
     });
   }
 
-  /**
-   * The recording file is available — spec §5.1 steps 2–3.
-   *
-   * A separate callback from `completed` on purpose: a provider tells you the call
-   * ended some seconds before the recording is fetchable, and fetching on the hangup
-   * callback is exactly the race that produces intermittent 404s. So the hangup sets
-   * `summarizing` and this enqueues the ingest.
-   *
-   * Honest gap: a call whose recording callback never arrives stays `summarizing`. A
-   * reconciliation sweep that polls `fetchRecording` for stuck calls is not built.
-   */
   async applyRecordingReady(input: RecordingReadyInput): Promise<void> {
     const located = await this.locate(input.providerCallId);
     if (!located) {
@@ -443,13 +386,6 @@ export class CallsService {
 
   // ── Internals ──────────────────────────────────────────────────────────────
 
-  /**
-   * The call ended having connected — bill the minutes that actually elapsed (§5.3).
-   *
-   * `billableMinutes` rounds up, so this must not run for a zero-length call: a call
-   * that connected and carried no audio would otherwise be charged a full minute. Zero
-   * minutes releases the hold instead.
-   */
   private async complete(call: Call, input: CallEventInput): Promise<void> {
     const durationSeconds = Math.max(0, Math.round(input.durationSeconds ?? 0));
     const minutes = this.metering.billableMinutes(durationSeconds);
@@ -495,14 +431,11 @@ export class CallsService {
       });
     }
 
-        const endedAt = new Date();
+    const endedAt = new Date();
 
     await this.prisma.call.update({
       where: { id: call.id },
       data: {
-        // `summarizing` when a recording is promised: the outcome is not known until
-        // the LLM has read the transcript, and claiming `completed` first would show a
-        // finished call with no summary.
         status: recordingUrl ? CallStatus.SUMMARIZING : CallStatus.COMPLETED,
         durationSeconds,
         billedMinutes: minutes,
@@ -535,8 +468,6 @@ export class CallsService {
 
     this.logger.log(`call ${call.id} completed: ${durationSeconds}s → ${minutes} min, ${costPaise} paise`);
 
-    // Post-settlement best-effort enqueue for observational shadow rating (Phase 4).
-    // Failure to enqueue is logged clearly and never aborts or rolls back legacy settlement.
     await this.queue
       .enqueue(
         'call-shadow-rate',
@@ -558,13 +489,6 @@ export class CallsService {
       });
   }
 
-  /**
-   * The call never connected — release the hold in full (§15).
-   *
-   * A phone that rang out costs the tenant nothing. This is the voice equivalent of a
-   * provider-side send failure, and the release is what keeps an unreachable contact
-   * off the bill.
-   */
   private async abandon(call: Call, input: CallEventInput): Promise<void> {
     await this.metering.release({
       tenantId: call.tenantId,
@@ -606,14 +530,6 @@ export class CallsService {
     this.logger.log(`call ${call.id} ended as ${input.event} — reservation released, nothing billed`);
   }
 
-  /**
-   * Which tenant a provider call id belongs to.
-   *
-   * `runAsSystem` because a webhook has no tenant scope yet and `calls` is a
-   * tenant-scoped model — the Prisma extension would refuse the query outright. This
-   * is the narrowest possible unscoped read: one row, by a unique provider id, and the
-   * only thing taken from it is the tenant to scope everything else to.
-   */
   private async locate(providerCallId: string): Promise<{ id: string; tenantId: string } | null> {
     return this.tenantContext.runAsSystem(`resolve provider call ${providerCallId}`, () =>
       this.prisma.call.findUnique({
@@ -630,15 +546,6 @@ export class CallsService {
   }
 }
 
-/**
- * The idempotency key for a call's reservation and its eventual charge.
- *
- * Our own row id, not the Plivo call uuid — which §8.2 would otherwise suggest. Two
- * reasons: the reserve happens before the provider has issued an id at all, and a
- * retried `call-place` job must find the *existing* hold rather than open a second one.
- * The provider's id is still recorded, on `calls.provider_call_id` and in the usage
- * event's metadata, so the audit trail back to Plivo is intact.
- */
 export function reservationKey(callId: string): string {
   return `call:${callId}`;
 }
@@ -660,6 +567,16 @@ export function toCallDto(call: Call, contactName: string, turns: CallTranscript
     typeof meta.sentiment === 'string' && ['positive', 'neutral', 'negative'].includes(meta.sentiment)
       ? (meta.sentiment as 'positive' | 'neutral' | 'negative')
       : null;
+  const salesOutcome =
+    typeof meta.salesOutcome === 'string' &&
+    ['interested', 'not_interested', 'callback_requested', 'converted'].includes(meta.salesOutcome)
+      ? (meta.salesOutcome as 'interested' | 'not_interested' | 'callback_requested' | 'converted')
+      : null;
+  const requirement = typeof meta.requirement === 'string' ? meta.requirement : null;
+  const objection = typeof meta.objection === 'string' ? meta.objection : null;
+  const followUpRequired = typeof meta.followUpRequired === 'boolean' ? meta.followUpRequired : null;
+  const followUpDate = typeof meta.followUpDate === 'string' ? meta.followUpDate : null;
+  const followUpTime = typeof meta.followUpTime === 'string' ? meta.followUpTime : null;
 
   return {
     id: call.id,
@@ -681,6 +598,12 @@ export function toCallDto(call: Call, contactName: string, turns: CallTranscript
     nextAction: call.nextAction,
     priority,
     sentiment,
+    salesOutcome,
+    requirement,
+    objection,
+    followUpRequired,
+    followUpDate,
+    followUpTime,
     transcript: turns.map(toTranscriptTurnDto),
     promptVersion: call.promptVersion,
     escalatedAt: call.escalatedAt?.toISOString() ?? null,
@@ -700,14 +623,6 @@ export function toTranscriptTurnDto(turn: CallTranscriptTurn): TranscriptTurnDto
   };
 }
 
-/**
- * A phone number with its middle digits hidden, for logs.
- *
- * Log aggregators are searchable by everyone with access to them, and §10 classifies
- * contact phone numbers as personal data. Keeping the country code and last four is
- * enough to identify a call in a support conversation without putting a customer's
- * number in a log line.
- */
 export function maskNumber(number: string): string {
   if (number.length <= 6) return number;
   return `${number.slice(0, 3)}${'*'.repeat(Math.max(0, number.length - 7))}${number.slice(-4)}`;

@@ -47,6 +47,7 @@ export class SttLiveProvider implements SttProvider {
       utterances: 'true',
       smart_format: 'true',
       language: input.languageHint ?? 'multi',
+      multichannel: 'true',
     });
 
     const headers: Record<string, string> = { authorization: `Token ${this.config.deepgram.apiKey}` };
@@ -89,6 +90,7 @@ export class SttLiveProvider implements SttProvider {
     };
 
     const utterances = payload.results?.utterances ?? [];
+    console.log('DEEPGRAM UTTERANCES DEBUG:', JSON.stringify(utterances.map(u => ({ speaker: u.speaker, text: u.transcript })), null, 2));
 
     const turns: TranscriptTurn[] = utterances.map((utterance, index) => ({
       sequence: index + 1,

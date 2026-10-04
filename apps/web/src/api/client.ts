@@ -309,6 +309,11 @@ export const api = {
   calls: {
     list: () => request<{ items: any[]; page: any }>('/calls'),
     get: (id: string) => request<any>(`/calls/${id}`),
+    update: (id: string, data: { summary?: string; nextAction?: string; priority?: string; sentiment?: string; salesOutcome?: string; requirement?: string; objection?: string; followUpRequired?: boolean; followUpDate?: string; followUpTime?: string }) =>
+      request<any>(`/calls/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     place: async (data: { contactId?: string; toPhone?: string; objective?: string; prompt?: string; scriptId?: string; callType?: 'ai' | 'manual' }) => {
       let contactId = data.contactId;
       if (!contactId && data.toPhone) {
